@@ -120,7 +120,12 @@ readLocalList(rentalLifeKey).forEach((item) => appendRentalLifeItem(item));
 
 const trustRequestDialog = $('#trustRequestDialog');
 const trustInfoDialog = $('#trustInfoDialog');
+const publicPageNames = new Set(['welcome', 'about', 'privacy', 'app-intro', 'signup', 'login']);
 function showPage(page) {
+  if (!publicPageNames.has(page) && !localStorage.getItem('halvethApiToken')) {
+    page = 'login';
+    if (location.hash !== '#login') history.replaceState(null, '', '#login');
+  }
   document.querySelectorAll('.page-view').forEach((view) => { view.hidden = view.dataset.page !== page; });
   document.querySelectorAll('.main-nav a').forEach((link) => link.classList.toggle('active', link.dataset.pageLink === page));
   const labels = { dashboard: 'Tableau de bord', goal: 'Mon objectif', owner: 'Espace propriétaire', professional: 'Espace professionnel', administration: 'Administration', identity: 'HALVETH ID', dossier: 'Private Dossier', trust: 'Double Trust', messages: 'Messages', ai: 'HALVETH AI', locations: 'Rental Space', visits: 'Mes visites', journal: 'Journal & notifications', 'rental-intelligence': 'Rental Engine', contracts: 'Bail & quittances', handoff: 'Transition location', incidents: 'Incidents & interventions', support: 'Centre d’aide', proof: 'HALVETH Proof', settings: 'Sécurité & paramètres', welcome: 'HALVETH', about: 'Comment ça fonctionne', privacy: 'Confidentialité', 'app-intro': 'Bienvenue dans l’application', signup: 'Créer un compte', login: 'Se connecter' };

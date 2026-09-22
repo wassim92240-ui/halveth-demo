@@ -9,6 +9,7 @@ let commercePlans = commercePlanFallback;
 let commerceSubscription = null;
 let subscriptionDialog = null;
 let sponsorRemovalDialog = null;
+let adminTicketReplyDialog = null;
 const sponsorPreferenceKey = 'halvethSponsorSuggestions';
 
 function commercePrice(plan) { return plan.monthlyCents ? `${commerceCurrency.format(plan.monthlyCents / 100)} / mois` : 'Gratuit'; }
@@ -86,8 +87,23 @@ function buildAdminCommerce() {
   const head = document.createElement('div'); head.className = 'panel-heading'; head.innerHTML = '<div><p class="eyebrow">GESTION COMMERCIALE & AIDE</p><h2>Revenus, offres et tickets</h2><p>Les montants encaissés proviennent uniquement d’un prestataire de paiement connecté.</p></div><button type="button" class="text-button" id="commerceAdminRefresh">Actualiser</button>';
   const body = document.createElement('div'); body.id = 'commerceAdminBody'; body.className = 'commerce-admin-body'; body.textContent = 'Connectez un compte administrateur pour afficher les données de gestion.';
   block.append(head, body); administration.insertBefore(block, administration.querySelector('.admin-footnote'));
+  buildAdminTicketReplyDialog();
   $('#commerceAdminRefresh').addEventListener('click', loadAdminCommerce);
   document.querySelector('[data-page-link="administration"]')?.addEventListener('click', () => window.setTimeout(loadAdminCommerce, 50));
+}
+
+function buildAdminTicketReplyDialog() {
+  if (adminTicketReplyDialog) return;
+  adminTicketReplyDialog = document.createElement('dialog'); adminTicketReplyDialog.className = 'subscription-dialog';
+  adminTicketReplyDialog.innerHTML = '<form class="subscription-dialog-content" id="adminTicketReplyForm"><button type="button" class="close subscription-close" aria-label="Fermer">×</button><p class="eyebrow">ADMINISTRATION · RÉPONSE HUMAINE</p><h2>Répondre au ticket</h2><p class="modal-copy">Votre réponse sera visible uniquement par la personne qui a créé cette demande. N’ajoutez pas de donnée personnelle inutile.</p><label class="form-field">Réponse<textarea id="adminTicketReplyNote" rows="5" maxlength="1000" placeholder="Indiquez la prochaine étape ou la réponse apportée."></textarea></label><div class="modal-actions"><button type="button" class="secondary-button" id="cancelAdminTicketReply">Annuler</button><button type="submit" class="primary-button" id="saveAdminTicketReply">Enregistrer la réponse</button></div></form>';
+  document.body.append(adminTicketReplyDialog);
+  adminTicketReplyDialog.querySelector('.subscription-close').addEventListener('click', () => adminTicketReplyDialog.close());
+  $('#cancelAdminTicketReply').addEventListener('click', () => adminTicketReplyDialog.close());
+  $('#adminTicketReplyForm').addEventListener('submit', async (event) => { event.preventDefault(); const token = localStorage.getItem(apiTokenKey); const id = adminTicketReplyDialog.dataset.ticketId || ''; const status = adminTicketReplyDialog.dataset.ticketStatus || 'submitted'; const adminNote = $('#adminTicketReplyNote').value.trim(); if (!token || !id || !adminNote) { toast('Ajoutez une réponse avant de l’enregistrer.'); return; } const submit = $('#saveAdminTicketReply'); submit.disabled = true; try { await apiCall('/admin/support-requests', { method: 'PUT', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ id, status, adminNote }) }); adminTicketReplyDialog.close(); toast('Réponse enregistrée dans le suivi du ticket.'); await loadAdminCommerce(); } catch (error) { toast(error.message || 'Impossible d’enregistrer la réponse.'); } finally { submit.disabled = false; } });
+}
+
+function openAdminTicketReply(button) {
+  buildAdminTicketReplyDialog(); adminTicketReplyDialog.dataset.ticketId = button.dataset.ticketReply || ''; adminTicketReplyDialog.dataset.ticketStatus = button.dataset.ticketStatus || 'submitted'; $('#adminTicketReplyNote').value = button.dataset.ticketNote || ''; if (typeof adminTicketReplyDialog.showModal === 'function') adminTicketReplyDialog.showModal(); else adminTicketReplyDialog.setAttribute('open', ''); setTimeout(() => $('#adminTicketReplyNote').focus(), 0);
 }
 
 function setSubscriptionDisplay(subscription) {
@@ -147,9 +163,9 @@ function paymentModule(analytics) { const panel = document.createElement('sectio
 function isProductFeedback(ticket) { return ticket.topic === 'Retour produit' || ticket.topic === 'Retour bêta'; }
 function ticketRow(ticket) {
   const feedback = isProductFeedback(ticket); const row = document.createElement('article'); row.className = `commerce-ticket${feedback ? ' beta-feedback-ticket' : ''}`;
-  const info = document.createElement('div'); const title = document.createElement('strong'); title.textContent = feedback ? 'Retour produit' : ticket.topic; const message = document.createElement('p'); message.textContent = ticket.message; const date = document.createElement('small'); date.textContent = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ticket.createdAt)); if (feedback) { const labels = { bug: 'Bug', idea: 'Idée', confusing: 'Parcours difficile', other: 'Autre retour' }; const signal = document.createElement('span'); signal.className = `beta-feedback-signal${ticket.blocking ? ' blocking' : ''}`; signal.textContent = ticket.blocking ? `Bloquant · ${labels[ticket.betaKind] || 'Retour'}` : labels[ticket.betaKind] || 'Retour utilisateur'; info.append(signal); } info.append(title, message, date);
+  const info = document.createElement('div'); const title = document.createElement('strong'); title.textContent = feedback ? 'Retour produit' : ticket.topic; const message = document.createElement('p'); message.textContent = ticket.message; const date = document.createElement('small'); date.textContent = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ticket.createdAt)); if (feedback) { const labels = { bug: 'Bug', idea: 'Idée', confusing: 'Parcours difficile', other: 'Autre retour' }; const signal = document.createElement('span'); signal.className = `beta-feedback-signal${ticket.blocking ? ' blocking' : ''}`; signal.textContent = ticket.blocking ? `Bloquant · ${labels[ticket.betaKind] || 'Retour'}` : labels[ticket.betaKind] || 'Retour utilisateur'; info.append(signal); } if (ticket.adminNote) { const note = document.createElement('p'); note.className = 'commerce-ticket-note'; note.textContent = `Réponse envoyée : ${ticket.adminNote}`; info.append(note); } info.append(title, message, date);
   const state = document.createElement('span'); state.className = `status-chip ${ticket.status === 'resolved' ? 'sent' : 'awaiting'}`; state.textContent = ticket.status === 'resolved' ? 'Résolu' : ticket.status === 'in_progress' ? 'En cours' : 'Reçue';
-  const actions = document.createElement('div'); actions.className = 'commerce-ticket-actions'; if (ticket.status !== 'resolved') { const progress = document.createElement('button'); progress.type = 'button'; progress.className = 'text-button'; progress.textContent = ticket.status === 'in_progress' ? 'Marquer résolu' : 'Prendre en charge'; progress.dataset.ticketId = ticket.id; progress.dataset.ticketStatus = ticket.status === 'in_progress' ? 'resolved' : 'in_progress'; actions.append(progress); }
+  const actions = document.createElement('div'); actions.className = 'commerce-ticket-actions'; const reply = document.createElement('button'); reply.type = 'button'; reply.className = 'text-button'; reply.textContent = ticket.adminNote ? 'Modifier la réponse' : 'Répondre'; reply.dataset.ticketReply = ticket.id; reply.dataset.ticketStatus = ticket.status || 'submitted'; reply.dataset.ticketNote = ticket.adminNote || ''; actions.append(reply); if (ticket.status !== 'resolved') { const progress = document.createElement('button'); progress.type = 'button'; progress.className = 'text-button'; progress.textContent = ticket.status === 'in_progress' ? 'Marquer résolu' : 'Prendre en charge'; progress.dataset.ticketId = ticket.id; progress.dataset.ticketStatus = ticket.status === 'in_progress' ? 'resolved' : 'in_progress'; actions.append(progress); }
   row.append(info, state, actions); return row;
 }
 
@@ -177,6 +193,7 @@ async function loadAdminCommerce() {
 document.addEventListener('click', async (event) => {
   const accountPlan = event.target.closest('[data-plan-account-select]'); if (accountPlan) { await selectPlan(accountPlan.dataset.planAccountSelect, 'account'); return; }
   const plan = event.target.closest('[data-plan-select]'); if (plan) { await selectPlan(plan.dataset.planSelect); return; }
+  const reply = event.target.closest('[data-ticket-reply]'); if (reply) { openAdminTicketReply(reply); return; }
   const ticket = event.target.closest('[data-ticket-id]'); if (ticket) { const token = localStorage.getItem(apiTokenKey); if (!token) return; try { await apiCall('/admin/support-requests', { method: 'PUT', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ id: ticket.dataset.ticketId, status: ticket.dataset.ticketStatus }) }); toast(ticket.dataset.ticketStatus === 'resolved' ? 'Ticket marqué comme résolu.' : 'Ticket pris en charge.'); loadAdminCommerce(); } catch (error) { toast(error.message || 'Impossible de mettre à jour ce ticket.'); } }
 });
 
